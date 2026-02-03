@@ -1,0 +1,346 @@
+/**
+ * WC Estimated Delivery Pro - Admin Styles
+ */
+
+/* Wrap */
+.wced-admin-wrap {
+    max-width: 900px;
+}
+
+.wced-admin-wrap h1 {
+    display: flex;
+    align-items: center;
+    padding: 20px 0;
+}
+
+.wced-description {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 20px;
+}
+
+/* Preview Box */
+.wced-preview-box {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.wced-preview-box h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.wced-preview-content {
+    padding: 20px;
+    background: #f9f9f9;
+    border-radius: 6px;
+}
+
+.wced-delivery-estimate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wced-preview-info {
+    margin-top: 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.wced-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.wced-badge-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.wced-badge-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.wced-time {
+    color: #666;
+    font-size: 13px;
+}
+
+/* Tabs */
+.wced-tabs {
+    margin-bottom: 0 !important;
+    border-bottom: 1px solid #ccd0d4;
+}
+
+.wced-tabs .nav-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 15px;
+    font-size: 13px;
+}
+
+.wced-tabs .nav-tab .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.wced-tabs .nav-tab-active {
+    background: #fff;
+    border-bottom-color: #fff;
+}
+
+/* Tab Content */
+.wced-tab-content {
+    display: none;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-top: none;
+    padding: 20px;
+    border-radius: 0 0 4px 4px;
+}
+
+.wced-tab-content.active {
+    display: block;
+}
+
+/* Form Table */
+.wced-settings-form .form-table th {
+    width: 200px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
+
+.wced-settings-form .form-table td {
+    padding-top: 15px;
+    padding-bottom: 15px;
+}
+
+/* Toggle Switch */
+.wced-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+}
+
+.wced-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.wced-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .3s;
+    border-radius: 26px;
+}
+
+.wced-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+    border-radius: 50%;
+}
+
+.wced-switch input:checked + .wced-slider {
+    background-color: #2271b1;
+}
+
+.wced-switch input:checked + .wced-slider:before {
+    transform: translateX(24px);
+}
+
+/* Icon Options */
+.wced-icon-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.wced-icon-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px 20px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 80px;
+}
+
+.wced-icon-option:hover {
+    border-color: #2271b1;
+}
+
+.wced-icon-option input {
+    position: absolute;
+    opacity: 0;
+}
+
+.wced-icon-option input:checked + .wced-icon-preview {
+    color: #2271b1;
+}
+
+.wced-icon-option:has(input:checked) {
+    border-color: #2271b1;
+    background: #f0f6fc;
+}
+
+.wced-icon-preview {
+    font-size: 24px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+}
+
+.wced-icon-preview svg {
+    width: 24px;
+    height: 24px;
+}
+
+.wced-icon-label {
+    font-size: 12px;
+    color: #666;
+}
+
+/* Color Picker */
+.wp-picker-container {
+    display: flex;
+    align-items: center;
+}
+
+/* Holidays */
+.wced-holidays-preset {
+    margin: 15px 0;
+}
+
+.wced-holidays-list {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+
+.wced-holidays-list small {
+    line-height: 1.8;
+    color: #666;
+}
+
+/* API Sync Section */
+.wced-api-sync-section {
+    background: #f0f6fc;
+    border: 1px solid #c3c4c7;
+    border-radius: 6px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.wced-api-sync-section h3 {
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wced-sync-status {
+    margin-left: 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.wced-last-sync {
+    margin-top: 10px !important;
+}
+
+#wced-sync-holidays .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+/* Submit Button */
+.wced-settings-form .submit {
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-top: none;
+    margin-top: 0;
+    border-radius: 0 0 4px 4px;
+}
+
+/* Badge Icon Selector */
+.wced-badge-icon-option {
+    transition: all 0.2s ease;
+}
+
+.wced-badge-icon-option:hover {
+    border-color: #2271b1 !important;
+    transform: translateY(-2px);
+}
+
+.wced-badge-icon-option input:checked + span {
+    color: #2271b1;
+}
+
+.wced-icon-select-wrap {
+    max-width: 600px;
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+    .wced-settings-form .form-table th {
+        width: auto;
+    }
+
+    .wced-icon-options {
+        flex-direction: column;
+    }
+
+    .wced-icon-option {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 10px;
+    }
+
+    .wced-icon-preview {
+        margin-bottom: 0;
+    }
+
+    .wced-icon-select-wrap {
+        max-width: 100%;
+    }
+
+    .wced-badge-icon-option {
+        min-width: 60px !important;
+        padding: 8px !important;
+    }
+}
