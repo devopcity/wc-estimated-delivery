@@ -211,6 +211,18 @@ GPL v2 or later
 
 ## Changelog
 
+### 2.5.0
+- **WooCommerce Blocks support**: Delivery estimate now displays in Block Checkout and Block Cart (render_block integration)
+- **Security**: Import data sanitized with `wp_unslash()` and 100KB size limit to prevent DoS
+- **Security**: Rate limiting on holiday sync (5 req/5min) and import (10 req/min) AJAX endpoints
+- **Security**: Debug log stored with autoload disabled to reduce memory usage
+- **Fix**: Cron job for automatic holiday sync now properly scheduled on activation and unscheduled on deactivation
+- **Fix**: `holidays_auto_sync` option now has UI toggle in Holidays tab and is properly sanitized
+- **Fix**: Replaced deprecated `current_time('mysql')` with `wp_date('Y-m-d H:i:s')`
+- **Fix**: Implemented documented hooks (`wced_before_delivery_estimate`, `wced_after_delivery_estimate` actions and `wced_delivery_date`, `wced_delivery_message` filters)
+- **Compatibility**: Updated `WC tested up to: 10.5` for WooCommerce 10.5
+- **New**: `frontend-blocks.js` - vanilla JS script for Block Checkout/Cart with fetch API (no jQuery dependency)
+
 ### 2.4.0
 - Rating badge now shows selected icon (not stars)
 - Rating format changed to 5.00/5.00
