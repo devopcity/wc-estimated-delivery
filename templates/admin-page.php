@@ -466,6 +466,17 @@ $preview_delivery = WC_Estimated_Delivery::get_instance()->calculate_delivery_da
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row"><?php esc_html_e('Auto-sync holidays', 'wc-estimated-delivery'); ?></th>
+                        <td>
+                            <label class="wced-switch">
+                                <input type="checkbox" name="wced_options[holidays_auto_sync]" value="yes"
+                                    <?php checked($options['holidays_auto_sync'] ?? 'yes', 'yes'); ?> />
+                                <span class="wced-slider"></span>
+                            </label>
+                            <p class="description"><?php esc_html_e('Automatically sync holidays daily via cron job.', 'wc-estimated-delivery'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><?php esc_html_e('Sync', 'wc-estimated-delivery'); ?></th>
                         <td>
                             <button type="button" class="button button-primary" id="wced-sync-holidays">

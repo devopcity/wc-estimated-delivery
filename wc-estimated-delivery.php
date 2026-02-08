@@ -3,7 +3,7 @@
  * Plugin Name: WC Estimated Delivery Pro
  * Plugin URI: https://devopcity.ro/wc-sla-timer
  * Description: Display estimated delivery date on checkout, cart and product pages with a comprehensive control panel.
- * Version: 2.4.0
+ * Version: 2.5.0
  * Author: Devopcity
  * Author URI: https://devopcity.ro
  * Text Domain: wc-estimated-delivery
@@ -11,7 +11,7 @@
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * WC requires at least: 5.0
- * WC tested up to: 8.5
+ * WC tested up to: 10.5
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
@@ -19,7 +19,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin constants
-define('WCED_VERSION', '2.4.0');
+define('WCED_VERSION', '2.5.0');
 define('WCED_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WCED_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WCED_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -149,6 +149,9 @@ class WC_Estimated_Delivery {
 
         // HPOS compatibility
         add_action('before_woocommerce_init', [$this, 'declare_hpos_compatibility']);
+
+        // WooCommerce Blocks support
+        add_action('woocommerce_blocks_loaded', [$this, 'register_blocks_support']);
     }
 
     /**
@@ -158,6 +161,102 @@ class WC_Estimated_Delivery {
         if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
             \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
         }
+    }
+
+    /**
+     * Register WooCommerce Blocks support
+     */
+    public function register_blocks_support() {
+        if ($this->options['enabled'] !== 'yes') return;
+
+        // Block Checkout support
+        add_filter('render_block_woocommerce/checkout-order-summary-block', [$this, 'render_block_checkout_estimate'], 10, 2);
+
+        // Block Cart support
+        if ($this->options['show_on_cart'] === 'yes') {
+            add_filter('render_block_woocommerce/cart-order-summary-block', [$this, 'render_block_cart_estimate'], 10, 2);
+        }
+    }
+
+    /**
+     * Render delivery estimate in Block Checkout
+     */
+    public function render_block_checkout_estimate($content, $block) {
+        return $content . $this->get_delivery_estimate_html();
+    }
+
+    /**
+     * Render delivery estimate in Block Cart
+     */
+    public function render_block_cart_estimate($content, $block) {
+        return $content . $this->get_delivery_estimate_html();
+    }
+
+    /**
+     * Get delivery estimate HTML (for blocks and reuse)
+     */
+    public function get_delivery_estimate_html() {
+        if ($this->options['enabled'] !== 'yes') return '';
+
+        $delivery = $this->calculate_delivery_date();
+
+        // Allow filtering of the delivery date
+        $delivery['date'] = apply_filters('wced_delivery_date', $delivery['date'], $delivery['is_before_cutoff']);
+        $delivery['formatted_date'] = $this->format_date($delivery['date']);
+
+        $message = $this->get_translated_message($this->options['message_template'], 'message_template');
+
+        if ($delivery['is_before_cutoff'] && !empty($this->options['message_before_cutoff'])) {
+            $message = $this->get_translated_message($this->options['message_before_cutoff'], 'message_before_cutoff');
+        } elseif (!$delivery['is_before_cutoff'] && !empty($this->options['message_after_cutoff'])) {
+            $message = $this->get_translated_message($this->options['message_after_cutoff'], 'message_after_cutoff');
+        }
+
+        $message = str_replace('{date}', $delivery['formatted_date'], $message);
+
+        // Allow filtering of the display message
+        $message = apply_filters('wced_delivery_message', $message, $delivery['formatted_date']);
+
+        $icon = $this->get_icon_html();
+
+        $this->log(sprintf('Displayed delivery estimate (blocks): %s (before_cutoff: %s)',
+            $delivery['formatted_date'],
+            $delivery['is_before_cutoff'] ? 'yes' : 'no'
+        ));
+
+        ob_start();
+        do_action('wced_before_delivery_estimate');
+        $before = ob_get_clean();
+
+        ob_start();
+        do_action('wced_after_delivery_estimate');
+        $after = ob_get_clean();
+
+        $html = $before;
+        $html .= '<div class="wced-delivery-estimate" id="wced-delivery-estimate">';
+        $html .= $icon;
+        $html .= '<span class="wced-message"><strong>' . esc_html($message) . '</strong></span>';
+        $html .= '</div>';
+        $html .= $after;
+
+        return $html;
+    }
+
+    /**
+     * Check rate limit for AJAX actions
+     */
+    private function check_rate_limit($action, $limit = 10, $window = 60) {
+        $user_id = get_current_user_id();
+        $ip = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+        $key = 'wced_rl_' . $action . '_' . ($user_id ?: md5($ip));
+        $count = (int) get_transient($key);
+
+        if ($count >= $limit) {
+            return false;
+        }
+
+        set_transient($key, $count + 1, $window);
+        return true;
     }
 
     /**
@@ -252,6 +351,7 @@ class WC_Estimated_Delivery {
         $sanitized['work_saturday'] = isset($input['work_saturday']) ? 'yes' : 'no';
         $sanitized['work_sunday'] = isset($input['work_sunday']) ? 'yes' : 'no';
         $sanitized['debug_mode'] = isset($input['debug_mode']) ? 'yes' : 'no';
+        $sanitized['holidays_auto_sync'] = isset($input['holidays_auto_sync']) ? 'yes' : 'no';
 
         // Trust badges
         $sanitized['badges_enabled'] = isset($input['badges_enabled']) ? 'yes' : 'no';
@@ -362,6 +462,20 @@ class WC_Estimated_Delivery {
         );
 
         wp_localize_script('wced-frontend', 'wced_vars', [
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('wced_nonce'),
+        ]);
+
+        // Enqueue blocks-compatible script (vanilla JS, no jQuery dependency)
+        wp_enqueue_script(
+            'wced-frontend-blocks',
+            WCED_PLUGIN_URL . 'assets/js/frontend-blocks.js',
+            [],
+            WCED_VERSION,
+            true
+        );
+
+        wp_localize_script('wced-frontend-blocks', 'wced_blocks_vars', [
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('wced_nonce'),
         ]);
@@ -543,6 +657,10 @@ class WC_Estimated_Delivery {
 
         $delivery = $this->calculate_delivery_date();
 
+        // Allow filtering of the delivery date
+        $delivery['date'] = apply_filters('wced_delivery_date', $delivery['date'], $delivery['is_before_cutoff']);
+        $delivery['formatted_date'] = $this->format_date($delivery['date']);
+
         // Build message with translation support
         $message = $this->get_translated_message($this->options['message_template'], 'message_template');
 
@@ -556,6 +674,9 @@ class WC_Estimated_Delivery {
         // Replace placeholders
         $message = str_replace('{date}', $delivery['formatted_date'], $message);
 
+        // Allow filtering of the display message
+        $message = apply_filters('wced_delivery_message', $message, $delivery['formatted_date']);
+
         $icon = $this->get_icon_html();
 
         $this->log(sprintf('Displayed delivery estimate: %s (before_cutoff: %s)',
@@ -563,10 +684,14 @@ class WC_Estimated_Delivery {
             $delivery['is_before_cutoff'] ? 'yes' : 'no'
         ));
 
+        do_action('wced_before_delivery_estimate');
+
         echo '<div class="wced-delivery-estimate" id="wced-delivery-estimate">';
         echo $icon;
         echo '<span class="wced-message"><strong>' . esc_html($message) . '</strong></span>';
         echo '</div>';
+
+        do_action('wced_after_delivery_estimate');
     }
 
     /**
@@ -723,6 +848,10 @@ class WC_Estimated_Delivery {
             wp_send_json_error(__('Access denied', 'wc-estimated-delivery'));
         }
 
+        if (!$this->check_rate_limit('sync_holidays', 5, 300)) {
+            wp_send_json_error(__('Too many requests. Please try again later.', 'wc-estimated-delivery'));
+        }
+
         $country = isset($_POST['country']) ? sanitize_text_field($_POST['country']) : 'US';
 
         // Validate country code (2 uppercase letters)
@@ -800,7 +929,7 @@ class WC_Estimated_Delivery {
         // Save to options
         $options = get_option('wced_options', []);
         $options['holidays'] = implode("\n", $formatted_dates);
-        $options['holidays_last_sync'] = current_time('mysql');
+        $options['holidays_last_sync'] = wp_date('Y-m-d H:i:s');
         $options['holidays_country'] = $country;
         update_option('wced_options', $options);
 
@@ -1030,7 +1159,7 @@ class WC_Estimated_Delivery {
         $export_data = [
             'plugin' => 'wc-estimated-delivery',
             'version' => WCED_VERSION,
-            'exported_at' => current_time('mysql'),
+            'exported_at' => wp_date('Y-m-d H:i:s'),
             'settings' => $this->options,
         ];
 
@@ -1047,14 +1176,23 @@ class WC_Estimated_Delivery {
             wp_send_json_error(__('Access denied', 'wc-estimated-delivery'));
         }
 
-        $import_data = isset($_POST['import_data']) ? $_POST['import_data'] : '';
+        if (!$this->check_rate_limit('import_settings', 10, 60)) {
+            wp_send_json_error(__('Too many requests. Please try again later.', 'wc-estimated-delivery'));
+        }
+
+        $import_data = isset($_POST['import_data']) ? wp_unslash($_POST['import_data']) : '';
 
         if (empty($import_data)) {
             wp_send_json_error(__('No import data provided', 'wc-estimated-delivery'));
         }
 
+        // Limit import size to 100KB to prevent DoS
+        if (strlen($import_data) > 102400) {
+            wp_send_json_error(__('Import data too large (max 100KB)', 'wc-estimated-delivery'));
+        }
+
         // Decode JSON
-        $data = json_decode(stripslashes($import_data), true);
+        $data = json_decode($import_data, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             $this->log('Import failed: Invalid JSON');
@@ -1118,12 +1256,12 @@ class WC_Estimated_Delivery {
         }
 
         $log[] = [
-            'time' => current_time('mysql'),
+            'time' => wp_date('Y-m-d H:i:s'),
             'level' => $level,
             'message' => $message,
         ];
 
-        update_option('wced_debug_log', $log);
+        update_option('wced_debug_log', $log, false);
     }
 
     /**
@@ -1227,6 +1365,11 @@ register_activation_hook(__FILE__, function() {
     if (!get_option('wced_options')) {
         add_option('wced_options', []);
     }
+
+    // Schedule daily holiday sync cron
+    if (!wp_next_scheduled('wced_sync_holidays_cron')) {
+        wp_schedule_event(time(), 'daily', 'wced_sync_holidays_cron');
+    }
 });
 
 /**
@@ -1235,4 +1378,10 @@ register_activation_hook(__FILE__, function() {
 register_deactivation_hook(__FILE__, function() {
     // Clear transients
     delete_transient('wced_available_countries');
+
+    // Unschedule cron
+    $timestamp = wp_next_scheduled('wced_sync_holidays_cron');
+    if ($timestamp) {
+        wp_unschedule_event($timestamp, 'wced_sync_holidays_cron');
+    }
 });
