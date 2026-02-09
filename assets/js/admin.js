@@ -5,6 +5,15 @@
 (function($) {
     'use strict';
 
+    /**
+     * Escape HTML to prevent XSS in dynamic content
+     */
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(String(str)));
+        return div.innerHTML;
+    }
+
     $(document).ready(function() {
         // Initialize color pickers
         $('.wced-color-picker').wpColorPicker({
@@ -104,10 +113,10 @@
                             $btn.closest('td').append('<p class="description wced-last-sync"></p>');
                             $lastSync = $('.wced-last-sync');
                         }
-                        $lastSync.html('Last sync: <strong>' + response.data.last_sync + '</strong>');
+                        $lastSync.html('Last sync: <strong>' + escapeHtml(response.data.last_sync) + '</strong>');
                     } else {
                         $status.html('<span class="dashicons dashicons-warning" style="color:#dc3232;"></span> ' +
-                            wced_admin.strings.sync_error + ': ' + response.data);
+                            escapeHtml(wced_admin.strings.sync_error) + ': ' + escapeHtml(response.data));
                     }
                 },
                 error: function() {
@@ -224,7 +233,7 @@
                                 location.reload();
                             }, 1500);
                         } else {
-                            $status.html('<span class="dashicons dashicons-warning" style="color:#dc3232;"></span> ' + response.data);
+                            $status.html('<span class="dashicons dashicons-warning" style="color:#dc3232;"></span> ' + escapeHtml(response.data));
                         }
                     },
                     error: function() {
@@ -320,7 +329,10 @@
             case 'custom':
                 var customUrl = $('input[name="wced_options[custom_icon]"]').val();
                 if (customUrl) {
-                    iconHtml = '<img src="' + customUrl + '" style="width:20px;height:20px;" />';
+                        var img = document.createElement('img');
+                    img.src = customUrl;
+                    img.style.cssText = 'width:20px;height:20px;';
+                    iconHtml = img.outerHTML;
                 }
                 break;
         }

@@ -6,7 +6,9 @@
 if (!defined('ABSPATH')) exit;
 
 $options = WC_Estimated_Delivery::get_instance()->get_options();
-$active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general';
+$valid_tabs = ['general', 'schedule', 'messages', 'style', 'badges', 'holidays', 'tools'];
+$active_tab = isset($_GET['tab']) && in_array($_GET['tab'], $valid_tabs, true)
+    ? $_GET['tab'] : 'general';
 
 // Preview delivery date
 $preview_delivery = WC_Estimated_Delivery::get_instance()->calculate_delivery_date();
