@@ -211,6 +211,12 @@ GPL v2 or later
 
 ## Changelog
 
+### 3.0.1
+- **Security**: Singleton protection - added `__clone()` and `__wakeup()` to prevent cloning and unserialization
+- **Security**: `date_format` option now validated against strict whitelist of 8 allowed formats
+- **Security**: `holidays_country` validated with regex (`/^[A-Z]{2}$/`) in `sanitize_options()`
+- **Security**: Client IP detection now proxy/CDN-aware (Cloudflare, X-Forwarded-For, X-Real-IP) with `FILTER_VALIDATE_IP`
+
 ### 3.0.0
 - **Security**: Fixed XSS vulnerabilities in admin.js - 4 injection points where `.html()` was used with unescaped server responses
 - **Security**: Added `escapeHtml()` helper in admin JS for safe HTML rendering
