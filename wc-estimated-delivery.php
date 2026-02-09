@@ -3,13 +3,13 @@
  * Plugin Name: WC Estimated Delivery Pro
  * Plugin URI: https://devopcity.ro/wc-sla-timer
  * Description: Display estimated delivery date on checkout, cart and product pages with a comprehensive control panel.
- * Version: 2.5.0
+ * Version: 3.0.0
  * Author: Devopcity
  * Author URI: https://devopcity.ro
  * Text Domain: wc-estimated-delivery
  * Domain Path: /languages
  * Requires at least: 5.8
- * Requires PHP: 7.4
+ * Requires PHP: 8.0
  * WC requires at least: 5.0
  * WC tested up to: 10.5
  * License: GPL v2 or later
@@ -19,7 +19,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin constants
-define('WCED_VERSION', '2.5.0');
+define('WCED_VERSION', '3.0.0');
 define('WCED_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WCED_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WCED_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -38,6 +38,11 @@ class WC_Estimated_Delivery {
      * Plugin options
      */
     private $options;
+
+    /**
+     * Cached holidays array
+     */
+    private $holidays_cache = null;
 
     /**
      * Default options
@@ -453,32 +458,53 @@ class WC_Estimated_Delivery {
         $custom_css = $this->get_custom_css();
         wp_add_inline_style('wced-frontend', $custom_css);
 
-        wp_enqueue_script(
-            'wced-frontend',
-            WCED_PLUGIN_URL . 'assets/js/frontend.js',
-            ['jquery'],
-            WCED_VERSION,
-            true
-        );
+        // Detect if current page uses WooCommerce Blocks
+        $uses_blocks = false;
+        if ((is_checkout() && has_block('woocommerce/checkout')) ||
+            (is_cart() && has_block('woocommerce/cart'))) {
+            $uses_blocks = true;
+        }
 
-        wp_localize_script('wced-frontend', 'wced_vars', [
+        $localized_vars = [
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('wced_nonce'),
-        ]);
+        ];
 
-        // Enqueue blocks-compatible script (vanilla JS, no jQuery dependency)
-        wp_enqueue_script(
-            'wced-frontend-blocks',
-            WCED_PLUGIN_URL . 'assets/js/frontend-blocks.js',
-            [],
-            WCED_VERSION,
-            true
-        );
+        // Classic checkout/cart: load jQuery-based script
+        if (!$uses_blocks) {
+            wp_enqueue_script(
+                'wced-frontend',
+                WCED_PLUGIN_URL . 'assets/js/frontend.js',
+                ['jquery'],
+                WCED_VERSION,
+                true
+            );
+            wp_localize_script('wced-frontend', 'wced_vars', $localized_vars);
+        }
 
-        wp_localize_script('wced-frontend-blocks', 'wced_blocks_vars', [
-            'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('wced_nonce'),
-        ]);
+        // Block checkout/cart: load vanilla JS script
+        if ($uses_blocks) {
+            wp_enqueue_script(
+                'wced-frontend-blocks',
+                WCED_PLUGIN_URL . 'assets/js/frontend-blocks.js',
+                [],
+                WCED_VERSION,
+                true
+            );
+            wp_localize_script('wced-frontend-blocks', 'wced_blocks_vars', $localized_vars);
+        }
+
+        // Product pages always use classic hooks
+        if (is_product() && !wp_script_is('wced-frontend', 'enqueued')) {
+            wp_enqueue_script(
+                'wced-frontend',
+                WCED_PLUGIN_URL . 'assets/js/frontend.js',
+                ['jquery'],
+                WCED_VERSION,
+                true
+            );
+            wp_localize_script('wced-frontend', 'wced_vars', $localized_vars);
+        }
     }
 
     /**
@@ -569,8 +595,15 @@ class WC_Estimated_Delivery {
      * Get holidays array
      */
     private function get_holidays_array() {
+        if ($this->holidays_cache !== null) {
+            return $this->holidays_cache;
+        }
+
         $holidays_text = $this->options['holidays'];
-        if (empty($holidays_text)) return [];
+        if (empty($holidays_text)) {
+            $this->holidays_cache = [];
+            return [];
+        }
 
         $lines = explode("\n", $holidays_text);
         $holidays = [];
@@ -590,6 +623,7 @@ class WC_Estimated_Delivery {
             }
         }
 
+        $this->holidays_cache = $holidays;
         return $holidays;
     }
 
@@ -747,7 +781,7 @@ class WC_Estimated_Delivery {
 
         echo '<div class="wced-trust-badges" style="
             display: grid;
-            grid-template-columns: repeat(' . count($badges) . ', 1fr);
+            grid-template-columns: repeat(' . intval(count($badges)) . ', 1fr);
             gap: 10px;
             margin: 20px 0 10px 0;
         ">';
@@ -808,6 +842,7 @@ class WC_Estimated_Delivery {
      * Get badge icon SVG
      */
     private function get_badge_icon_svg($icon, $color = '#333333') {
+        $color = esc_attr($color);
         $icons = [
             'truck' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>',
             'trophy' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
@@ -933,8 +968,9 @@ class WC_Estimated_Delivery {
         $options['holidays_country'] = $country;
         update_option('wced_options', $options);
 
-        // Update options in memory
+        // Update options and invalidate cache
         $this->options = wp_parse_args($options, $this->defaults);
+        $this->holidays_cache = null;
 
         return [
             'count' => count($formatted_dates),
@@ -1113,6 +1149,13 @@ class WC_Estimated_Delivery {
      * REST API: Get delivery date
      */
     public function rest_get_delivery_date($request) {
+        if (!$this->check_rate_limit('rest_delivery', 30, 60)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => __('Too many requests. Please try again later.', 'wc-estimated-delivery'),
+            ], 429);
+        }
+
         $this->log('REST API: delivery-date endpoint called');
 
         $delivery = $this->calculate_delivery_date();
@@ -1214,8 +1257,9 @@ class WC_Estimated_Delivery {
         $sanitized = $this->sanitize_options($data['settings']);
         update_option('wced_options', $sanitized);
 
-        // Update instance
+        // Update instance and invalidate cache
         $this->options = wp_parse_args($sanitized, $this->defaults);
+        $this->holidays_cache = null;
 
         $this->log('Settings imported successfully from version ' . ($data['version'] ?? 'unknown'));
 
@@ -1275,6 +1319,11 @@ class WC_Estimated_Delivery {
      * Register translatable strings for WPML/Polylang
      */
     public function register_translatable_strings() {
+        // Skip if no translation plugin is active
+        if (!function_exists('icl_register_string') && !function_exists('pll_register_string')) {
+            return;
+        }
+
         // WPML String Translation
         if (function_exists('icl_register_string')) {
             icl_register_string('wc-estimated-delivery', 'Message Template', $this->options['message_template']);

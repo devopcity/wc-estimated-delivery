@@ -198,7 +198,7 @@ The plugin uses the `wc-estimated-delivery` text domain for all translatable str
 
 - WordPress 5.8+
 - WooCommerce 5.0+
-- PHP 7.4+
+- PHP 8.0+
 
 ## Support
 
@@ -210,6 +210,20 @@ https://devopcity.ro/wc-estimated-delivery
 GPL v2 or later
 
 ## Changelog
+
+### 3.0.0
+- **Security**: Fixed XSS vulnerabilities in admin.js - 4 injection points where `.html()` was used with unescaped server responses
+- **Security**: Added `escapeHtml()` helper in admin JS for safe HTML rendering
+- **Security**: Tab parameter in admin page now validated against strict whitelist
+- **Security**: SVG color parameter in `get_badge_icon_svg()` now internally escaped with `esc_attr()`
+- **Security**: Trust badges grid-template-columns uses `intval()` for safe output
+- **Security**: REST API `/delivery-date` endpoint now rate-limited (30 req/min) with HTTP 429 response
+- **Performance**: Holidays array parsed once per request and cached in class property
+- **Performance**: Conditional script loading - classic `frontend.js` only on classic checkout, `frontend-blocks.js` only on block checkout
+- **Performance**: Single `wp_localize_script` call per page (eliminated duplicate nonce/ajax_url output)
+- **Performance**: Translation string registration skipped early when no WPML/Polylang is active
+- **Performance**: Holidays cache invalidated on sync and import operations
+- **Compatibility**: Minimum PHP version raised to 8.0 (aligned with WordPress 6.9 recommendation)
 
 ### 2.5.0
 - **WooCommerce Blocks support**: Delivery estimate now displays in Block Checkout and Block Cart (render_block integration)
