@@ -3,7 +3,7 @@
  * Plugin Name: WC Estimated Delivery Pro
  * Plugin URI: https://devopcity.ro/wc-sla-timer
  * Description: Display estimated delivery date on checkout, cart and product pages with a comprehensive control panel.
- * Version: 3.0.0
+ * Version: 3.0.1
  * Author: Devopcity
  * Author URI: https://devopcity.ro
  * Text Domain: wc-estimated-delivery
@@ -19,7 +19,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin constants
-define('WCED_VERSION', '3.0.0');
+define('WCED_VERSION', '3.0.1');
 define('WCED_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WCED_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WCED_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -112,6 +112,18 @@ class WC_Estimated_Delivery {
             self::$instance = new self();
         }
         return self::$instance;
+    }
+
+    /**
+     * Prevent cloning
+     */
+    private function __clone() {}
+
+    /**
+     * Prevent unserialization
+     */
+    public function __wakeup() {
+        throw new \RuntimeException('Cannot unserialize singleton');
     }
 
     /**
@@ -252,7 +264,7 @@ class WC_Estimated_Delivery {
      */
     private function check_rate_limit($action, $limit = 10, $window = 60) {
         $user_id = get_current_user_id();
-        $ip = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+        $ip = $this->get_client_ip();
         $key = 'wced_rl_' . $action . '_' . ($user_id ?: md5($ip));
         $count = (int) get_transient($key);
 
@@ -262,6 +274,30 @@ class WC_Estimated_Delivery {
 
         set_transient($key, $count + 1, $window);
         return true;
+    }
+
+    /**
+     * Get client IP address (proxy/CDN aware)
+     */
+    private function get_client_ip() {
+        // Check trusted proxy headers (order matters)
+        $headers = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR'];
+
+        foreach ($headers as $header) {
+            if (!empty($_SERVER[$header])) {
+                $ip = $_SERVER[$header];
+                // X-Forwarded-For can contain multiple IPs; take the first (client)
+                if (strpos($ip, ',') !== false) {
+                    $ip = trim(explode(',', $ip)[0]);
+                }
+                $ip = filter_var($ip, FILTER_VALIDATE_IP);
+                if ($ip !== false) {
+                    return $ip;
+                }
+            }
+        }
+
+        return '0.0.0.0';
     }
 
     /**
@@ -350,9 +386,12 @@ class WC_Estimated_Delivery {
             ? $input['position'] : 'before_payment';
         $sanitized['show_on_product'] = isset($input['show_on_product']) ? 'yes' : 'no';
         $sanitized['show_on_cart'] = isset($input['show_on_cart']) ? 'yes' : 'no';
-        $sanitized['date_format'] = sanitize_text_field($input['date_format'] ?? 'M j, Y');
+        $valid_date_formats = ['j F Y', 'F j, Y', 'M j, Y', 'd F Y', 'm/d/Y', 'd/m/Y', 'd.m.Y', 'Y-m-d'];
+        $sanitized['date_format'] = in_array($input['date_format'] ?? '', $valid_date_formats, true)
+            ? $input['date_format'] : 'j F Y';
         $sanitized['show_day_name'] = isset($input['show_day_name']) ? 'yes' : 'no';
-        $sanitized['holidays_country'] = sanitize_text_field($input['holidays_country'] ?? 'US');
+        $country_input = strtoupper(sanitize_text_field($input['holidays_country'] ?? 'US'));
+        $sanitized['holidays_country'] = preg_match('/^[A-Z]{2}$/', $country_input) ? $country_input : 'US';
         $sanitized['work_saturday'] = isset($input['work_saturday']) ? 'yes' : 'no';
         $sanitized['work_sunday'] = isset($input['work_sunday']) ? 'yes' : 'no';
         $sanitized['debug_mode'] = isset($input['debug_mode']) ? 'yes' : 'no';
