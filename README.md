@@ -211,6 +211,19 @@ GPL v2 or later
 
 ## Changelog
 
+### 3.1.0
+- **Compatibility**: WordPress 6.9+ on-demand block style loading - added `enqueue_block_assets` hook for reliable CSS delivery on block themes
+- **Compatibility**: Migrated `wp_localize_script` to `wp_add_inline_script` (recommended best practice, avoids block theme timing issues)
+- **Compatibility**: jQuery 4.0 audit - all JS files confirmed compatible (no deprecated functions used)
+- **Compatibility**: PHP 8.4 audit - no implicitly nullable parameters, all string operations properly null-guarded
+- **UI**: Redesigned admin panel - modern card-based layout with consistent styling
+- **UI**: Import/Export buttons now on the same row for better workflow
+- **UI**: Version badge in admin header
+- **UI**: Grouped color pickers and dimension controls for cleaner Style tab
+- **UI**: Debug log viewer with improved monospace styling
+- **UI**: REST API endpoints displayed with method badges
+- **UI**: Feature list with icon bullets for translation info
+
 ### 3.0.1
 - **Security**: Singleton protection - added `__clone()` and `__wakeup()` to prevent cloning and unserialization
 - **Security**: `date_format` option now validated against strict whitelist of 8 allowed formats

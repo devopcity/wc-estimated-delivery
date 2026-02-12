@@ -3,7 +3,7 @@
  * Plugin Name: WC Estimated Delivery Pro
  * Plugin URI: https://devopcity.ro/wc-sla-timer
  * Description: Display estimated delivery date on checkout, cart and product pages with a comprehensive control panel.
- * Version: 3.0.1
+ * Version: 3.1.0
  * Author: Devopcity
  * Author URI: https://devopcity.ro
  * Text Domain: wc-estimated-delivery
@@ -19,7 +19,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin constants
-define('WCED_VERSION', '3.0.1');
+define('WCED_VERSION', '3.1.0');
 define('WCED_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WCED_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WCED_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -169,6 +169,9 @@ class WC_Estimated_Delivery {
 
         // WooCommerce Blocks support
         add_action('woocommerce_blocks_loaded', [$this, 'register_blocks_support']);
+
+        // WP 6.9+ block style loading compatibility
+        add_action('enqueue_block_assets', [$this, 'enqueue_block_styles']);
     }
 
     /**
@@ -192,6 +195,29 @@ class WC_Estimated_Delivery {
         // Block Cart support
         if ($this->options['show_on_cart'] === 'yes') {
             add_filter('render_block_woocommerce/cart-order-summary-block', [$this, 'render_block_cart_estimate'], 10, 2);
+        }
+    }
+
+    /**
+     * Enqueue frontend styles for block rendering (WP 6.9+ compatibility)
+     */
+    public function enqueue_block_styles() {
+        if ($this->options['enabled'] !== 'yes') return;
+        if (is_admin()) return;
+
+        if (!wp_style_is('wced-frontend', 'registered')) {
+            wp_register_style(
+                'wced-frontend',
+                WCED_PLUGIN_URL . 'assets/css/frontend.css',
+                [],
+                WCED_VERSION
+            );
+        }
+
+        if ((function_exists('has_block') && has_block('woocommerce/checkout')) ||
+            (function_exists('has_block') && has_block('woocommerce/cart'))) {
+            wp_enqueue_style('wced-frontend');
+            wp_add_inline_style('wced-frontend', $this->get_custom_css());
         }
     }
 
@@ -458,7 +484,7 @@ class WC_Estimated_Delivery {
             true
         );
 
-        wp_localize_script('wced-admin', 'wced_admin', [
+        wp_add_inline_script('wced-admin', 'const wced_admin = ' . wp_json_encode([
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('wced_admin_nonce'),
             'strings' => [
@@ -476,7 +502,7 @@ class WC_Estimated_Delivery {
                 'clearing_log' => __('Clearing...', 'wc-estimated-delivery'),
                 'log_cleared' => __('Log cleared', 'wc-estimated-delivery'),
             ],
-        ]);
+        ]) . ';', 'before');
     }
 
     /**
@@ -504,10 +530,10 @@ class WC_Estimated_Delivery {
             $uses_blocks = true;
         }
 
-        $localized_vars = [
+        $localized_data = wp_json_encode([
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('wced_nonce'),
-        ];
+        ]);
 
         // Classic checkout/cart: load jQuery-based script
         if (!$uses_blocks) {
@@ -518,7 +544,7 @@ class WC_Estimated_Delivery {
                 WCED_VERSION,
                 true
             );
-            wp_localize_script('wced-frontend', 'wced_vars', $localized_vars);
+            wp_add_inline_script('wced-frontend', 'const wced_vars = ' . $localized_data . ';', 'before');
         }
 
         // Block checkout/cart: load vanilla JS script
@@ -530,7 +556,7 @@ class WC_Estimated_Delivery {
                 WCED_VERSION,
                 true
             );
-            wp_localize_script('wced-frontend-blocks', 'wced_blocks_vars', $localized_vars);
+            wp_add_inline_script('wced-frontend-blocks', 'const wced_blocks_vars = ' . $localized_data . ';', 'before');
         }
 
         // Product pages always use classic hooks
@@ -542,7 +568,7 @@ class WC_Estimated_Delivery {
                 WCED_VERSION,
                 true
             );
-            wp_localize_script('wced-frontend', 'wced_vars', $localized_vars);
+            wp_add_inline_script('wced-frontend', 'const wced_vars = ' . $localized_data . ';', 'before');
         }
     }
 
