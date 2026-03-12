@@ -211,6 +211,14 @@ GPL v2 or later
 
 ## Changelog
 
+### 3.2.0
+- **Compatibility**: WC tested up to 10.6, WP requires 6.2+, WC requires 7.0+
+- **Security**: Fixed IP spoofing in rate limiter - proxy headers now only trusted when REMOTE_ADDR is private (behind load balancer)
+- **Refactor**: `display_delivery_estimate()` reuses `get_delivery_estimate_html()` (eliminated 30 lines of duplicate code)
+- **Refactor**: Unified SVG icon library - single `wced_get_icon_svg()` replaces two near-identical implementations
+- **Refactor**: Simplified frontend script loading, removed duplicate product page enqueue
+- **Fix**: Inconsistent indentation in defaults array
+
 ### 3.1.0
 - **Compatibility**: WordPress 6.9+ on-demand block style loading - added `enqueue_block_assets` hook for reliable CSS delivery on block themes
 - **Compatibility**: Migrated `wp_localize_script` to `wp_add_inline_script` (recommended best practice, avoids block theme timing issues)

@@ -3,15 +3,15 @@
  * Plugin Name: WC Estimated Delivery Pro
  * Plugin URI: https://devopcity.ro/wc-sla-timer
  * Description: Display estimated delivery date on checkout, cart and product pages with a comprehensive control panel.
- * Version: 3.1.0
+ * Version: 3.2.0
  * Author: Devopcity
  * Author URI: https://devopcity.ro
  * Text Domain: wc-estimated-delivery
  * Domain Path: /languages
- * Requires at least: 5.8
+ * Requires at least: 6.2
  * Requires PHP: 8.0
- * WC requires at least: 5.0
- * WC tested up to: 10.5
+ * WC requires at least: 7.0
+ * WC tested up to: 10.6
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
@@ -19,7 +19,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin constants
-define('WCED_VERSION', '3.1.0');
+define('WCED_VERSION', '3.2.0');
 define('WCED_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WCED_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WCED_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -53,7 +53,7 @@ class WC_Estimated_Delivery {
         'cutoff_minute' => 0,
         'min_days' => 1,
         'max_days' => 2,
-                'holidays' => '',
+        'holidays' => '',
         'message_template' => 'Estimated delivery: {date}',
         'message_before_cutoff' => '',
         'message_after_cutoff' => '',
@@ -202,23 +202,16 @@ class WC_Estimated_Delivery {
      * Enqueue frontend styles for block rendering (WP 6.9+ compatibility)
      */
     public function enqueue_block_styles() {
-        if ($this->options['enabled'] !== 'yes') return;
-        if (is_admin()) return;
+        if ($this->options['enabled'] !== 'yes' || is_admin()) return;
+        if (!function_exists('has_block')) return;
+        if (!has_block('woocommerce/checkout') && !has_block('woocommerce/cart')) return;
 
         if (!wp_style_is('wced-frontend', 'registered')) {
-            wp_register_style(
-                'wced-frontend',
-                WCED_PLUGIN_URL . 'assets/css/frontend.css',
-                [],
-                WCED_VERSION
-            );
+            wp_register_style('wced-frontend', WCED_PLUGIN_URL . 'assets/css/frontend.css', [], WCED_VERSION);
         }
 
-        if ((function_exists('has_block') && has_block('woocommerce/checkout')) ||
-            (function_exists('has_block') && has_block('woocommerce/cart'))) {
-            wp_enqueue_style('wced-frontend');
-            wp_add_inline_style('wced-frontend', $this->get_custom_css());
-        }
+        wp_enqueue_style('wced-frontend');
+        wp_add_inline_style('wced-frontend', $this->get_custom_css());
     }
 
     /**
@@ -262,7 +255,7 @@ class WC_Estimated_Delivery {
 
         $icon = $this->get_icon_html();
 
-        $this->log(sprintf('Displayed delivery estimate (blocks): %s (before_cutoff: %s)',
+        $this->log(sprintf('Displayed delivery estimate: %s (before_cutoff: %s)',
             $delivery['formatted_date'],
             $delivery['is_before_cutoff'] ? 'yes' : 'no'
         ));
@@ -304,26 +297,34 @@ class WC_Estimated_Delivery {
 
     /**
      * Get client IP address (proxy/CDN aware)
+     * Only trusts proxy headers when a known reverse proxy is detected
      */
     private function get_client_ip() {
-        // Check trusted proxy headers (order matters)
-        $headers = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR'];
+        $remote_addr = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
-        foreach ($headers as $header) {
-            if (!empty($_SERVER[$header])) {
-                $ip = $_SERVER[$header];
-                // X-Forwarded-For can contain multiple IPs; take the first (client)
-                if (strpos($ip, ',') !== false) {
-                    $ip = trim(explode(',', $ip)[0]);
-                }
-                $ip = filter_var($ip, FILTER_VALIDATE_IP);
-                if ($ip !== false) {
-                    return $ip;
-                }
-            }
+        // Only trust proxy headers if a known proxy indicator is present
+        // Cloudflare always sets CF-Connecting-IP when proxying
+        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            $ip = filter_var($_SERVER['HTTP_CF_CONNECTING_IP'], FILTER_VALIDATE_IP);
+            if ($ip !== false) return $ip;
         }
 
-        return '0.0.0.0';
+        // Trust X-Forwarded-For only when REMOTE_ADDR is a private/reserved IP (behind load balancer)
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) &&
+            filter_var($remote_addr, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            $ip = trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]);
+            $ip = filter_var($ip, FILTER_VALIDATE_IP);
+            if ($ip !== false) return $ip;
+        }
+
+        // X-Real-IP: same private IP check
+        if (!empty($_SERVER['HTTP_X_REAL_IP']) &&
+            filter_var($remote_addr, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            $ip = filter_var($_SERVER['HTTP_X_REAL_IP'], FILTER_VALIDATE_IP);
+            if ($ip !== false) return $ip;
+        }
+
+        return filter_var($remote_addr, FILTER_VALIDATE_IP) ?: '0.0.0.0';
     }
 
     /**
@@ -535,40 +536,16 @@ class WC_Estimated_Delivery {
             'nonce' => wp_create_nonce('wced_nonce'),
         ]);
 
-        // Classic checkout/cart: load jQuery-based script
-        if (!$uses_blocks) {
-            wp_enqueue_script(
-                'wced-frontend',
-                WCED_PLUGIN_URL . 'assets/js/frontend.js',
-                ['jquery'],
-                WCED_VERSION,
-                true
-            );
+        // Classic pages (non-block checkout/cart, product pages): jQuery-based script
+        if (!$uses_blocks || is_product()) {
+            wp_enqueue_script('wced-frontend', WCED_PLUGIN_URL . 'assets/js/frontend.js', ['jquery'], WCED_VERSION, true);
             wp_add_inline_script('wced-frontend', 'const wced_vars = ' . $localized_data . ';', 'before');
         }
 
-        // Block checkout/cart: load vanilla JS script
+        // Block checkout/cart: vanilla JS script
         if ($uses_blocks) {
-            wp_enqueue_script(
-                'wced-frontend-blocks',
-                WCED_PLUGIN_URL . 'assets/js/frontend-blocks.js',
-                [],
-                WCED_VERSION,
-                true
-            );
+            wp_enqueue_script('wced-frontend-blocks', WCED_PLUGIN_URL . 'assets/js/frontend-blocks.js', [], WCED_VERSION, true);
             wp_add_inline_script('wced-frontend-blocks', 'const wced_blocks_vars = ' . $localized_data . ';', 'before');
-        }
-
-        // Product pages always use classic hooks
-        if (is_product() && !wp_script_is('wced-frontend', 'enqueued')) {
-            wp_enqueue_script(
-                'wced-frontend',
-                WCED_PLUGIN_URL . 'assets/js/frontend.js',
-                ['jquery'],
-                WCED_VERSION,
-                true
-            );
-            wp_add_inline_script('wced-frontend', 'const wced_vars = ' . $localized_data . ';', 'before');
         }
     }
 
@@ -749,48 +726,10 @@ class WC_Estimated_Delivery {
     }
 
     /**
-     * Display delivery estimate
+     * Display delivery estimate (classic checkout/cart/product hooks)
      */
     public function display_delivery_estimate() {
-        if ($this->options['enabled'] !== 'yes') return;
-
-        $delivery = $this->calculate_delivery_date();
-
-        // Allow filtering of the delivery date
-        $delivery['date'] = apply_filters('wced_delivery_date', $delivery['date'], $delivery['is_before_cutoff']);
-        $delivery['formatted_date'] = $this->format_date($delivery['date']);
-
-        // Build message with translation support
-        $message = $this->get_translated_message($this->options['message_template'], 'message_template');
-
-        // Check for before/after cutoff specific messages
-        if ($delivery['is_before_cutoff'] && !empty($this->options['message_before_cutoff'])) {
-            $message = $this->get_translated_message($this->options['message_before_cutoff'], 'message_before_cutoff');
-        } elseif (!$delivery['is_before_cutoff'] && !empty($this->options['message_after_cutoff'])) {
-            $message = $this->get_translated_message($this->options['message_after_cutoff'], 'message_after_cutoff');
-        }
-
-        // Replace placeholders
-        $message = str_replace('{date}', $delivery['formatted_date'], $message);
-
-        // Allow filtering of the display message
-        $message = apply_filters('wced_delivery_message', $message, $delivery['formatted_date']);
-
-        $icon = $this->get_icon_html();
-
-        $this->log(sprintf('Displayed delivery estimate: %s (before_cutoff: %s)',
-            $delivery['formatted_date'],
-            $delivery['is_before_cutoff'] ? 'yes' : 'no'
-        ));
-
-        do_action('wced_before_delivery_estimate');
-
-        echo '<div class="wced-delivery-estimate" id="wced-delivery-estimate">';
-        echo $icon;
-        echo '<span class="wced-message"><strong>' . esc_html($message) . '</strong></span>';
-        echo '</div>';
-
-        do_action('wced_after_delivery_estimate');
+        echo $this->get_delivery_estimate_html();
     }
 
     /**
@@ -907,21 +846,7 @@ class WC_Estimated_Delivery {
      * Get badge icon SVG
      */
     private function get_badge_icon_svg($icon, $color = '#333333') {
-        $color = esc_attr($color);
-        $icons = [
-            'truck' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>',
-            'trophy' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
-            'flag' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
-            'star' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="' . $color . '" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
-            'heart' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="' . $color . '" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
-            'shield' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
-            'check' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-            'gift' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
-            'leaf' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>',
-            'clock' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' . $color . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
-        ];
-
-        return $icons[$icon] ?? $icons['star'];
+        return wced_get_icon_svg($icon, 24, $color);
     }
 
     /**
@@ -1435,24 +1360,39 @@ class WC_Estimated_Delivery {
 }
 
 /**
- * Get icon SVG for admin display
+ * Shared SVG icon library
  */
-function wced_get_icon_svg_admin($icon, $color = '#333333') {
-    $icons = [
-        'truck' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' . esc_attr($color) . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>',
-        'trophy' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' . esc_attr($color) . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
-        'flag' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' . esc_attr($color) . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
-        'star' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="' . esc_attr($color) . '" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
-        'heart' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="' . esc_attr($color) . '" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
-        'shield' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' . esc_attr($color) . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
-        'check' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' . esc_attr($color) . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-        'gift' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' . esc_attr($color) . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
-        'leaf' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' . esc_attr($color) . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>',
-        'clock' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' . esc_attr($color) . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
-        'custom' => '<span style="font-size: 20px;">✏️</span>',
+function wced_get_icon_svg($icon, $size = 20, $color = '#333333') {
+    $color = esc_attr($color);
+    $s = intval($size);
+    $paths = [
+        'truck'  => 'fill="none" stroke="%c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+        'trophy' => 'fill="none" stroke="%c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
+        'flag'   => 'fill="none" stroke="%c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+        'star'   => 'fill="%c" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+        'heart'  => 'fill="%c" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
+        'shield' => 'fill="none" stroke="%c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+        'check'  => 'fill="none" stroke="%c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+        'gift'   => 'fill="none" stroke="%c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
+        'leaf'   => 'fill="none" stroke="%c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>',
+        'clock'  => 'fill="none" stroke="%c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     ];
 
-    return $icons[$icon] ?? $icons['star'];
+    if ($icon === 'custom') {
+        return '<span style="font-size: ' . $s . 'px;">✏️</span>';
+    }
+
+    $path = $paths[$icon] ?? $paths['star'];
+    $path = str_replace('%c', $color, $path);
+
+    return '<svg width="' . $s . '" height="' . $s . '" viewBox="0 0 24 24" ' . $path . '</svg>';
+}
+
+/**
+ * Get icon SVG for admin display (alias)
+ */
+function wced_get_icon_svg_admin($icon, $color = '#333333') {
+    return wced_get_icon_svg($icon, 20, $color);
 }
 
 /**
